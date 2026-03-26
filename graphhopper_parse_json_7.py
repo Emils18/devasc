@@ -1,6 +1,6 @@
-
 import requests
 import urllib.parse
+from datetime import datetime, timedelta
 
 route_url = "https://graphhopper.com/api/1/route?"
 key = "d229444b-25bc-418e-b3b9-faaca34a8dc9"
@@ -31,25 +31,18 @@ def geocoding(location, key):
         name = json_data["hits"][0]["name"]
         value = json_data["hits"][0]["osm_value"]
 
-        if "country" in json_data["hits"][0]:
-            country = json_data["hits"][0]["country"]
-        else:
-            country = ""
+        country = json_data["hits"][0].get("country", "")
+        state = json_data["hits"][0].get("state", "")
 
-        if "state" in json_data["hits"][0]:
-            state = json_data["hits"][0]["state"]
-        else:
-            state = ""
-
-        if len(state) != 0 and len(country) != 0:
-            new_loc = name + ", " + state + ", " + country
-        elif len(country) != 0:
-            new_loc = name + ", " + country
+        if state and country:
+            new_loc = f"{name}, {state}, {country}"
+        elif country:
+            new_loc = f"{name}, {country}"
         else:
             new_loc = name
 
         print("Geocoding API URL for " + new_loc +
-              " (Location Type: " + value + ")\n" + url)
+              f" (Location Type: {value})\n{url}")
 
     else:
         lat = "null"
@@ -58,7 +51,7 @@ def geocoding(location, key):
 
         if json_status != 200:
             print("Geocode API status:", json_status)
-            print("Error message:", json_data["message"])
+            print("Error message:", json_data.get("message", "No message"))
 
     return json_status, lat, lng, new_loc
 
@@ -72,10 +65,9 @@ while True:
     print("+++++++++++++++++++++++++++++++++++++++++++++")
 
     profile = ["car", "bike", "foot"]
-
     vehicle = input("Enter a vehicle profile from the list above: ")
 
-    if vehicle == "q" or vehicle == "quit":
+    if vehicle in ["q", "quit"]:
         break
 
     elif vehicle not in profile:
@@ -83,17 +75,13 @@ while True:
         print("No valid vehicle profile was entered. Using the car profile.")
 
     loc1 = input("Starting Location: ")
-
-    if loc1 == "quit" or loc1 == "q":
+    if loc1 in ["q", "quit"]:
         break
-
     orig = geocoding(loc1, key)
 
     loc2 = input("Destination: ")
-
-    if loc2 == "quit" or loc2 == "q":
+    if loc2 in ["q", "quit"]:
         break
-
     dest = geocoding(loc2, key)
 
     print("=================================================")
@@ -108,8 +96,9 @@ while True:
             "vehicle": vehicle
         }) + op + dp
 
-        paths_status = requests.get(paths_url).status_code
-        paths_data = requests.get(paths_url).json()
+        response = requests.get(paths_url)
+        paths_status = response.status_code
+        paths_data = response.json()
 
         print("Routing API Status:", paths_status)
         print("Routing API URL:\n", paths_url)
@@ -120,23 +109,30 @@ while True:
 
         if paths_status == 200:
 
-            miles = (paths_data["paths"][0]["distance"]) / 1000 / 1.61
-            km = (paths_data["paths"][0]["distance"]) / 1000
+            distance_m = paths_data["paths"][0]["distance"]
+            miles = distance_m / 1000 / 1.61
+            km = distance_m / 1000
+            travel_time_ms = paths_data["paths"][0]["time"]
 
-            sec = int(paths_data["paths"][0]["time"] / 1000 % 60)
-            min = int(paths_data["paths"][0]["time"] / 1000 / 60 % 60)
-            hr = int(paths_data["paths"][0]["time"] / 1000 / 60 / 60)
+            sec = int(travel_time_ms / 1000 % 60)
+            min = int(travel_time_ms / 1000 / 60 % 60)
+            hr = int(travel_time_ms / 1000 / 60 / 60)
 
             print("Distance Traveled: {0:.1f} miles / {1:.1f} km".format(miles, km))
             print("Trip Duration: {0:02d}:{1:02d}:{2:02d}".format(hr, min, sec))
 
+            # ----- Feature 1: Estimated Arrival Time -----
+            current_time = datetime.now()
+            arrival_time = current_time + timedelta(milliseconds=travel_time_ms)
+            print(f"Current Time: {current_time.strftime('%I:%M %p')}")
+            print(f"Estimated Arrival: {arrival_time.strftime('%I:%M %p')}")
+            # --------------------------------------------
+
             print("=================================================")
 
-            for each in range(len(paths_data["paths"][0]["instructions"])):
-
-                path = paths_data["paths"][0]["instructions"][each]["text"]
-                distance = paths_data["paths"][0]["instructions"][each]["distance"]
-
+            for instr in paths_data["paths"][0]["instructions"]:
+                path = instr["text"]
+                distance = instr["distance"]
                 print("{0} ( {1:.1f} km / {2:.1f} miles )".format(
                     path,
                     distance / 1000,
@@ -146,5 +142,5 @@ while True:
             print("=================================================")
 
         else:
-            print("Error message:", paths_data["message"])
+            print("Error message:", paths_data.get("message", "No message"))
             print("*************************************************")
