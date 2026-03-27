@@ -7,13 +7,8 @@ key = "d229444b-25bc-418e-b3b9-faaca34a8dc9"
 
 # --- Feature 1: Trip Cost / Energy Estimator ---
 def calculate_trip_metrics(distance_km, vehicle):
-    """
-    Calculates cost for cars or calories for human-powered travel.
-    Assumes average fuel efficiency: 8.5L / 100km
-    Assumes average calorie burn: 50 kcal / km (walking) or 30 kcal / km (cycling)
-    """
     if vehicle == "car":
-        fuel_price = 1.50  # Average price per Liter
+        fuel_price = 1.50
         liters_used = (distance_km / 100) * 8.5
         total_cost = liters_used * fuel_price
         return f"Estimated Fuel Cost: ${total_cost:.2f} (at $1.50/L)"
@@ -27,6 +22,7 @@ def calculate_trip_metrics(distance_km, vehicle):
         return f"Estimated Energy Burned: {calories:.0f} kcal"
     
     return ""
+
 
 def geocoding(location, key):
 
@@ -53,18 +49,18 @@ def geocoding(location, key):
         name = json_data["hits"][0]["name"]
         value = json_data["hits"][0]["osm_value"]
 
-        country = json_data["hits"][0]["country"] if "country" in json_data["hits"][0] else ""
-        state = json_data["hits"][0]["state"] if "state" in json_data["hits"][0] else ""
+        country = json_data["hits"][0].get("country", "")
+        state = json_data["hits"][0].get("state", "")
 
-        if len(state) != 0 and len(country) != 0:
-            new_loc = name + ", " + state + ", " + country
-        elif len(country) != 0:
-            new_loc = name + ", " + country
+        if state and country:
+            new_loc = f"{name}, {state}, {country}"
+        elif country:
+            new_loc = f"{name}, {country}"
         else:
             new_loc = name
 
         print("Geocoding API URL for " + new_loc +
-              " (Location Type: " + value + ")\n" + url)
+              f" (Location Type: {value})\n{url}")
 
     else:
         lat = "null"
@@ -77,6 +73,7 @@ def geocoding(location, key):
 
     return json_status, lat, lng, new_loc
 
+
 while True:
 
     print("\n+++++++++++++++++++++++++++++++++++++++++++++")
@@ -87,22 +84,25 @@ while True:
 
     profile = ["car", "bike", "foot"]
 
-    vehicle = input("Enter a vehicle profile from the list above: ")
+    vehicle = input("Enter a vehicle profile: ")
 
-    if vehicle == "q" or vehicle == "quit":
+    if vehicle in ["q", "quit"]:
         break
 
     elif vehicle not in profile:
         vehicle = "car"
-        print("No valid vehicle profile was entered. Using the car profile.")
+        print("Invalid profile. Defaulting to car.")
+
+    # --- Feature 3: Language Selection ---
+    user_lang = input("Enter language code (en, es, fr, de): ") or "en"
 
     loc1 = input("Starting Location: ")
-    if loc1 == "quit" or loc1 == "q":
+    if loc1 in ["q", "quit"]:
         break
     orig = geocoding(loc1, key)
 
     loc2 = input("Destination: ")
-    if loc2 == "quit" or loc2 == "q":
+    if loc2 in ["q", "quit"]:
         break
     dest = geocoding(loc2, key)
 
@@ -113,13 +113,18 @@ while True:
         op = "&point=" + str(orig[1]) + "%2C" + str(orig[2])
         dp = "&point=" + str(dest[1]) + "%2C" + str(dest[2])
 
-        paths_url = route_url + urllib.parse.urlencode({
+        # --- Include language in request ---
+        query_params = {
             "key": key,
-            "vehicle": vehicle
-        }) + op + dp
+            "vehicle": vehicle,
+            "locale": user_lang
+        }
 
-        paths_status = requests.get(paths_url).status_code
-        paths_data = requests.get(paths_url).json()
+        paths_url = route_url + urllib.parse.urlencode(query_params) + op + dp
+
+        response = requests.get(paths_url)
+        paths_status = response.status_code
+        paths_data = response.json()
 
         print("Routing API Status:", paths_status)
         print("Routing API URL:\n", paths_url)
@@ -130,41 +135,36 @@ while True:
 
         if paths_status == 200:
 
-            miles = (paths_data["paths"][0]["distance"]) / 1000 / 1.61
-            km = (paths_data["paths"][0]["distance"]) / 1000
+            distance_m = paths_data["paths"][0]["distance"]
+            km = distance_m / 1000
+            miles = km / 1.61
 
-            # --- Feature 1: Trip Metrics ---
-            metrics = calculate_trip_metrics(km, vehicle)
-            print(metrics)
+            travel_time_ms = paths_data["paths"][0]["time"]
+
+            # --- Feature 1: Cost / Calories ---
+            print(calculate_trip_metrics(km, vehicle))
 
             # --- Feature 2: Arrival Time ---
-            travel_time_ms = paths_data["paths"][0]["time"]
             current_time = datetime.now()
             arrival_time = current_time + timedelta(milliseconds=travel_time_ms)
+
             print(f"Current Time: {current_time.strftime('%I:%M %p')}")
             print(f"Estimated Arrival: {arrival_time.strftime('%I:%M %p')}")
 
+            # Duration
             sec = int(travel_time_ms / 1000 % 60)
             min = int(travel_time_ms / 1000 / 60 % 60)
             hr = int(travel_time_ms / 1000 / 60 / 60)
 
-            print("Distance Traveled: {0:.1f} miles / {1:.1f} km".format(miles, km))
-            print("Trip Duration: {0:02d}:{1:02d}:{2:02d}".format(hr, min, sec))
+            print("Distance: {0:.1f} km / {1:.1f} miles".format(km, miles))
+            print("Duration: {0:02d}:{1:02d}:{2:02d}".format(hr, min, sec))
+
             print("=================================================")
 
-            for each in range(len(paths_data["paths"][0]["instructions"])):
-
-                path = paths_data["paths"][0]["instructions"][each]["text"]
-                distance = paths_data["paths"][0]["instructions"][each]["distance"]
-
-                print("{0} ( {1:.1f} km / {2:.1f} miles )".format(
-                    path,
-                    distance / 1000,
-                    distance / 1000 / 1.61
-                ))
+            for instr in paths_data["paths"][0]["instructions"]:
+                print(instr["text"])
 
             print("=================================================")
 
         else:
-            print("Error message:", paths_data.get("message", "Unknown error"))
-            print("*************************************************")
+            print("Error:", paths_data.get("message", "Unknown error"))
