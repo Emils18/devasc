@@ -7,13 +7,7 @@ key = "d229444b-25bc-418e-b3b9-faaca34a8dc9"
 
 # --- Feature 1: Trip Cost / Energy Estimator ---
 def calculate_trip_metrics(distance_km, vehicle):
-    if vehicle == "car":
-        fuel_price = 1.50
-        liters_used = (distance_km / 100) * 8.5
-        total_cost = liters_used * fuel_price
-        return f"Estimated Fuel Cost: ${total_cost:.2f} (at $1.50/L)"
-    
-    elif vehicle == "foot":
+    if vehicle == "foot":
         calories = distance_km * 50
         return f"Estimated Energy Burned: {calories:.0f} kcal"
     
@@ -22,6 +16,20 @@ def calculate_trip_metrics(distance_km, vehicle):
         return f"Estimated Energy Burned: {calories:.0f} kcal"
     
     return ""
+
+# --- Feature 4: Fuel Cost Calculator (User Input) ---
+def calculate_fuel_cost(distance_km):
+    try:
+        fuel_price = float(input("Enter fuel price per liter: "))
+        efficiency = float(input("Enter vehicle fuel efficiency (km per liter): "))
+        
+        liters_used = distance_km / efficiency
+        total_cost = liters_used * fuel_price
+        
+        return f"Fuel Needed: {liters_used:.2f} L | Estimated Cost: ${total_cost:.2f}"
+    
+    except:
+        return "Invalid fuel input."
 
 
 def geocoding(location, key):
@@ -113,7 +121,7 @@ while True:
         op = "&point=" + str(orig[1]) + "%2C" + str(orig[2])
         dp = "&point=" + str(dest[1]) + "%2C" + str(dest[2])
 
-        # --- Include language in request ---
+        # --- Include language ---
         query_params = {
             "key": key,
             "vehicle": vehicle,
@@ -138,11 +146,13 @@ while True:
             distance_m = paths_data["paths"][0]["distance"]
             km = distance_m / 1000
             miles = km / 1.61
-
             travel_time_ms = paths_data["paths"][0]["time"]
 
-            # --- Feature 1: Cost / Calories ---
-            print(calculate_trip_metrics(km, vehicle))
+            # --- Feature 4 (car) OR Feature 1 (bike/foot) ---
+            if vehicle == "car":
+                print(calculate_fuel_cost(km))
+            else:
+                print(calculate_trip_metrics(km, vehicle))
 
             # --- Feature 2: Arrival Time ---
             current_time = datetime.now()
